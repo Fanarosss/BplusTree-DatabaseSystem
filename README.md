@@ -5,3 +5,7 @@ Database System working on B plus Trees
   <li>All the functions that write/read on and from disk exist on /src/AM.c
   <li>The B plus Tree implementation code exists on /src/BplusTree.c
 </ul>
+
+### Collaborators
+* [Aslanidis Theofanis](https://github.com/Fanarosss)
+* [Athinaios Konstantinos](https://github.com/kostasA97)
