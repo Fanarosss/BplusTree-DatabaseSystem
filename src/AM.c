@@ -102,99 +102,98 @@ int AM_CreateIndex(char *fileName, char attrType1, int attrLength1, char attrTyp
 
 
 int AM_DestroyIndex(char *fileName) {
-	AM_errno = AME_OK;
-	for(int i = 0; i < MAX_OPEN_FILES; i++){
-		if(OPENFILES[i] != NULL){
-			if(strcmp(OPENFILES[i]->fileName, fileName) == 0){
-				AM_errno = AME_FILEOPEN;							//if the file is still open it cannot be destroyed
-				return AM_errno;
-			}
-		}
-	}
-	int result = remove(fileName);
-	if(result != 0){
-		AM_errno = AME_DESTROYINDEX;								//if the remove() function didn't work print error
-		return AM_errno;
-	}
-  	return AM_errno;
+    AM_errno = AME_OK;
+    for(int i = 0; i < MAX_OPEN_FILES; i++){
+        if(OPENFILES[i] != NULL){
+            if(strcmp(OPENFILES[i]->fileName, fileName) == 0){
+                AM_errno = AME_FILEOPEN;							//if the file is still open it cannot be destroyed
+                return AM_errno;
+            }
+        }
+    }
+    int result = remove(fileName);
+    if(result != 0){
+        AM_errno = AME_DESTROYINDEX;								//if the remove() function didn't work print error
+        return AM_errno;
+    }
+    return AM_errno;
 }
 
 
 
 int AM_OpenIndex (char *fileName) {
     AM_errno = AME_OK;
-	int fileDesc;
-	int i;
-	for(i = 0; i < MAX_OPEN_FILES; i++){
-		if (OPENFILES[i] == NULL) break;									//find the first NULL index of the OPENFILES array
-	}
-	if(i == MAX_OPEN_FILES ){
-	       AM_errno = AME_MAXOPENFILES;										//if the array of open files is full print error
-           return AM_errno;
-	}
+    int fileDesc;
+    int i;
+    for(i = 0; i < MAX_OPEN_FILES; i++){
+        if (OPENFILES[i] == NULL) break;									//find the first NULL index of the OPENFILES array
+    }
+    if(i == MAX_OPEN_FILES ){
+        AM_errno = AME_MAXOPENFILES;										//if the array of open files is full print error
+        return AM_errno;
+    }
     OPENFILES[i] = malloc(sizeof(AM_Index));								//create a new struct for this open file
-	BF_Block *block;
-	BF_Block_Init(&block);
-	CALL_OR_DIE(BF_OpenFile(fileName, &fileDesc));
-	CALL_OR_DIE(BF_GetBlock(fileDesc,0,block));								//take the description block to copy its contents to the struct
-	char* BlockData = BF_Block_GetData(block);
-	OPENFILES[i]->fileDesc = fileDesc;
-	OPENFILES[i]->fileName = malloc(strlen(fileName));
-	strcpy(OPENFILES[i]->fileName, fileName);
-	size_t offset = 4;
+    BF_Block *block;
+    BF_Block_Init(&block);
+    CALL_OR_DIE(BF_OpenFile(fileName, &fileDesc));
+    CALL_OR_DIE(BF_GetBlock(fileDesc,0,block));								//take the description block to copy its contents to the struct
+    char* BlockData = BF_Block_GetData(block);
+    OPENFILES[i]->fileDesc = fileDesc;
+    OPENFILES[i]->fileName = malloc(strlen(fileName));
+    strcpy(OPENFILES[i]->fileName, fileName);
+    size_t offset = 4;
     //initializing the struct with apropriate values
-	memcpy(&(OPENFILES[i]->attrType1), (BlockData + offset), *(BlockData));
-	offset += *(BlockData);
-	memcpy(&(OPENFILES[i]->attrLength1), (BlockData + offset), *(BlockData + 1));
-	offset += *(BlockData + 1);
-	memcpy(&(OPENFILES[i]->attrType2), (BlockData + offset), *(BlockData + 2));
-	offset += *(BlockData + 2);
-	memcpy(&(OPENFILES[i]->attrLength2), (BlockData + offset), *(BlockData + 3));
-	offset += *(BlockData + 3);
-	memcpy(&(OPENFILES[i]->root), (BlockData + offset), sizeof(int));
+    memcpy(&(OPENFILES[i]->attrType1), (BlockData + offset), *(BlockData));
+    offset += *(BlockData);
+    memcpy(&(OPENFILES[i]->attrLength1), (BlockData + offset), *(BlockData + 1));
+    offset += *(BlockData + 1);
+    memcpy(&(OPENFILES[i]->attrType2), (BlockData + offset), *(BlockData + 2));
+    offset += *(BlockData + 2);
+    memcpy(&(OPENFILES[i]->attrLength2), (BlockData + offset), *(BlockData + 3));
+    offset += *(BlockData + 3);
+    memcpy(&(OPENFILES[i]->root), (BlockData + offset), sizeof(int));
     BF_Block_SetDirty(block);
     CALL_OR_DIE(BF_UnpinBlock(block));
-	BF_Block_Destroy(&block);
+    BF_Block_Destroy(&block);
     CALL_OR_DIE(BF_GetBlockCounter(fileDesc, &OPENFILES[i]->blockid)); 		//initializing variable blockid in struct
     OPENFILES[i]->blockid --; 												//because block counter, counts the description block also.
-  	return i;
+    return i;
 }
 
 
 
 int AM_CloseIndex (int fileDesc) {
-	AM_errno = AME_OK;
-	if(OPENFILES[fileDesc] == NULL){
-		AM_errno = AME_FILENOTOPEN;											//the file i want to close is not open
-		return AM_errno;
-	}
-	for(int i = 0; i < MAX_OPEN_SCANS; i++){
-		if(SCANFILES[i] != NULL){
-			if((SCANFILES[i]->open_file_id) == fileDesc){
-				AM_errno = AME_SCANOPEN;									//the file has open scans to it so it cannot be closed
-				return AM_errno;
-			}
-		}
-	}
-	BF_Block* block0;
-	BF_Block_Init(&block0);
-	BF_GetBlock(OPENFILES[fileDesc]->fileDesc, 0 , block0);					//take the description block to write on it
-	char* data0 = BF_Block_GetData(block0);
-	size_t offset = 4 + *(data0) + *(data0 + 1) + *(data0 + 2) + *(data0 + 3);
-	memcpy(data0 + offset, &OPENFILES[fileDesc]->root, sizeof(int));		//write the new root
-	BF_Block_SetDirty(block0);
-	BF_UnpinBlock(block0);
-	BF_Block_Destroy(&block0);
-	free(OPENFILES[fileDesc]->fileName);
-	free(OPENFILES[fileDesc]);
-	OPENFILES[fileDesc] = NULL;												//delete the struct and free the space
-	CALL_OR_DIE(BF_CloseFile(fileDesc));
-  	return AM_errno;
+    AM_errno = AME_OK;
+    if(OPENFILES[fileDesc] == NULL){
+        AM_errno = AME_FILENOTOPEN;											//the file i want to close is not open
+        return AM_errno;
+    }
+    for(int i = 0; i < MAX_OPEN_SCANS; i++){
+        if(SCANFILES[i] != NULL){
+            if((SCANFILES[i]->open_file_id) == fileDesc){
+                AM_errno = AME_SCANOPEN;									//the file has open scans to it so it cannot be closed
+                return AM_errno;
+            }
+        }
+    }
+    BF_Block* block0;
+    BF_Block_Init(&block0);
+    BF_GetBlock(OPENFILES[fileDesc]->fileDesc, 0 , block0);					//take the description block to write on it
+    char* data0 = BF_Block_GetData(block0);
+    size_t offset = 4 + *(data0) + *(data0 + 1) + *(data0 + 2) + *(data0 + 3);
+    memcpy(data0 + offset, &OPENFILES[fileDesc]->root, sizeof(int));		//write the new root
+    BF_Block_SetDirty(block0);
+    BF_UnpinBlock(block0);
+    BF_Block_Destroy(&block0);
+    free(OPENFILES[fileDesc]->fileName);
+    free(OPENFILES[fileDesc]);
+    OPENFILES[fileDesc] = NULL;												//delete the struct and free the space
+    CALL_OR_DIE(BF_CloseFile(fileDesc));
+    return AM_errno;
 }
 
 
 int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
-
                                                                                   //searching if the file is open and doesn't have open scans on it
     for(int j = 0; j < MAX_OPEN_SCANS; j++){                                      //if it is not open,or it is open and has open scans on it
         if(SCANFILES[j] != NULL){
