@@ -21,45 +21,48 @@ void AM_Init() {
 
 
 int AM_CreateIndex(char *fileName, char attrType1, int attrLength1, char attrType2, int attrLength2) {
-	AM_errno = AME_OK;
-	int fileDesc;
-	if(attrType1=='c'){
-		if((attrLength1>255) || (attrLength1<1)){
-			AM_errno = AME_WRONGLENGTH1;                           //length of attrType1:c is wrong
-			return AM_errno;
-		}
-	}else if((attrType1=='i') || (attrType1=='f')){
-		if(attrLength1!=4){
-			AM_errno = AME_WRONGLENGTH1;                           //length of attrType1:i or attrType1:f is wrong
-			return AM_errno;
-		}
-	}else{
-		AM_errno = AME_WRONGTYPE1;                                 //if attrType1 is not c,i,or f then it's wrong
-		return AM_errno;
-	}
-	if(attrType2=='c'){
-		if((attrLength2>255) || (attrLength2<1)){
-			AM_errno = AME_WRONGLENGTH2;                          //length of attrType2:c is wrong
-			return AM_errno;
-		}
-	}else if((attrType2=='i') || (attrType2=='f')){
-		if(attrLength2!=4){
-			AM_errno = AME_WRONGLENGTH2;
-			return AM_errno;
-		}
-	}else{
-		AM_errno = AME_WRONGTYPE2;
-		return AM_errno;
-	}
-	CALL_OR_DIE(BF_CreateFile(fileName));
-	CALL_OR_DIE(BF_OpenFile(fileName, &fileDesc));
-	BF_Block *block;                                           //this description block contains all the necessary information of the file
-	BF_Block_Init(&block);
-	CALL_OR_DIE(BF_AllocateBlock(fileDesc, block));
+    AM_errno = AME_OK;
+    int fileDesc;
+
+    if(attrType1=='c'){
+        if((attrLength1>255) || (attrLength1<1)){
+            AM_errno = AME_WRONGLENGTH1;                           //length of attrType1:c is wrong
+            return AM_errno;
+        }
+    }else if((attrType1=='i') || (attrType1=='f')){
+        if(attrLength1!=4){
+            AM_errno = AME_WRONGLENGTH1;                           //length of attrType1:i or attrType1:f is wrong
+            return AM_errno;
+        }
+    }else{
+        AM_errno = AME_WRONGTYPE1;                                 //if attrType1 is not c,i,or f then it's wrong
+        return AM_errno;
+    }
+
+    if(attrType2=='c'){
+        if((attrLength2>255) || (attrLength2<1)){
+            AM_errno = AME_WRONGLENGTH2;                          //length of attrType2:c is wrong
+            return AM_errno;
+        }
+    }else if((attrType2=='i') || (attrType2=='f')){
+        if(attrLength2!=4){
+            AM_errno = AME_WRONGLENGTH2;
+            return AM_errno;
+        }
+    }else{
+        AM_errno = AME_WRONGTYPE2;
+        return AM_errno;
+    }
+
+    CALL_OR_DIE(BF_CreateFile(fileName));
+    CALL_OR_DIE(BF_OpenFile(fileName, &fileDesc));
+    BF_Block *block;                                           //this description block contains all the necessary information of the file
+    BF_Block_Init(&block);
+    CALL_OR_DIE(BF_AllocateBlock(fileDesc, block));
     int blockid = 0;
-	char *BlockData = BF_Block_GetData(block);
-	size_t offset = 0;
-                                                                //storing in the first 4 bytes the size of the 4 variables: attrType1,attrLength1 etc.
+    char *BlockData = BF_Block_GetData(block);
+    size_t offset = 0;
+    /* storing in the first 4 bytes the size of the 4 variables: attrType1,attrLength1 etc. */
     memset(BlockData + offset, (int)sizeof(attrType1), 1);
     offset++;
     memset(BlockData + offset, (int)sizeof(attrLength1), 1);
@@ -69,34 +72,34 @@ int AM_CreateIndex(char *fileName, char attrType1, int attrLength1, char attrTyp
     memset(BlockData + offset, (int)sizeof(attrLength2), 1);
     offset++;
     //now I store their values
-	memcpy(BlockData + offset, &attrType1, sizeof(attrType1));
-	offset += sizeof(attrType1);
-	memcpy(BlockData + offset, &attrLength1, sizeof(attrLength1));
-	offset += sizeof(attrLength1);
-	memcpy(BlockData + offset, &attrType2, sizeof(attrType2));
-	offset += sizeof(attrType2);
-	memcpy(BlockData + offset, &attrLength2, sizeof(attrLength2));
-	offset += sizeof(attrLength2);
-    //Allocate another data block which will be our starting root of the b+ tree
-	BF_Block *block2;
-	BF_Block_Init(&block2);
-	CALL_OR_DIE(BF_AllocateBlock(fileDesc, block2));
-	char *BlockData2 = BF_Block_GetData(block2);
+    memcpy(BlockData + offset, &attrType1, sizeof(attrType1));
+    offset += sizeof(attrType1);
+    memcpy(BlockData + offset, &attrLength1, sizeof(attrLength1));
+    offset += sizeof(attrLength1);
+    memcpy(BlockData + offset, &attrType2, sizeof(attrType2));
+    offset += sizeof(attrType2);
+    memcpy(BlockData + offset, &attrLength2, sizeof(attrLength2));
+    offset += sizeof(attrLength2);
+    /* Allocate another data block which will be our starting root of the b+ tree */
+    BF_Block *block2;
+    BF_Block_Init(&block2);
+    CALL_OR_DIE(BF_AllocateBlock(fileDesc, block2));
+    char *BlockData2 = BF_Block_GetData(block2);
     blockid ++;
     int end_of_data = -1;											//if the pointer to next data block is -1, there is not any other data block
-	memcpy(BlockData2,"d",1);										//d:data block, b:interior block
-	memset(BlockData2 + 1,0,1); 									//Second byte of block is the number of keys/records in block
-	memcpy(BlockData2 + 2,&blockid,sizeof(int));					//store its own block id
+    memcpy(BlockData2,"d",1);										//d:data block, b:interior block
+    memset(BlockData2 + 1,0,1); 									//Second byte of block is the number of keys/records in block
+    memcpy(BlockData2 + 2,&blockid,sizeof(int));					//store its own block id
     memcpy(BlockData2 + 2 + sizeof(int),&end_of_data,sizeof(int));	//store the id of the next data block
     memcpy(BlockData + offset,&blockid, sizeof(int)); 				//setting root at the description block
-	BF_Block_SetDirty(block);
-	CALL_OR_DIE(BF_UnpinBlock(block));
-	BF_Block_SetDirty(block2);
-	CALL_OR_DIE(BF_UnpinBlock(block2));
-	BF_Block_Destroy(&block2);
-	BF_Block_Destroy(&block);
-	CALL_OR_DIE(BF_CloseFile(fileDesc));
-  	return AM_errno;
+    BF_Block_SetDirty(block);
+    CALL_OR_DIE(BF_UnpinBlock(block));
+    BF_Block_SetDirty(block2);
+    CALL_OR_DIE(BF_UnpinBlock(block2));
+    BF_Block_Destroy(&block2);
+    BF_Block_Destroy(&block);
+    CALL_OR_DIE(BF_CloseFile(fileDesc));
+    return AM_errno;
 }
 
 
