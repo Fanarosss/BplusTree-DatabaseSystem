@@ -327,46 +327,46 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 
 
 int AM_OpenIndexScan(int fileDesc, int op, void *value) {
-	AM_errno = AME_OK;
-	int j;
-	if(OPENFILES[fileDesc] == NULL){
-		AM_errno = AME_FILENOTOPEN;													//the file I want to scan is not open
-		return AM_errno;
-	}
-	if((op<1) || (op>6)){
-		AM_errno = AME_WRONGOP;														//the operation given is wrong
-		return AM_errno;
-	}
-	for(j = 0; j < MAX_OPEN_SCANS; j++){
-		if (SCANFILES[j] == NULL) break;											//find the first NULL index of the SCANFILES array
-	}
-	if(j == MAX_OPEN_SCANS ){
-		AM_errno = AME_MAXOPENSCANS;												//if the array of open scans is full print error
-		return AM_errno;
-	}
-	SCANFILES[j] = malloc(sizeof(AM_Scan));											//create a new struct for the scan
-	SCANFILES[j]->fileDesc = OPENFILES[fileDesc]->fileDesc;							//this is the number that BF_OpenFile returns
-	SCANFILES[j]->open_file_id = fileDesc;											//this is the number of this file in the array OPENFILES
-	SCANFILES[j]->op = op;
-	SCANFILES[j]->size_of_value = OPENFILES[fileDesc]->attrLength1;
-	SCANFILES[j]->type_of_value = OPENFILES[fileDesc]->attrType1;
-	SCANFILES[j]->size_of_value2 = OPENFILES[fileDesc]->attrLength2;
-	SCANFILES[j]->type_of_value2 = OPENFILES[fileDesc]->attrType2;
-	SCANFILES[j]->size_of_record = OPENFILES[fileDesc]->attrLength1 + OPENFILES[fileDesc]->attrLength2;
-	SCANFILES[j]->value =(void*)malloc(OPENFILES[fileDesc]->attrLength2);
-	SCANFILES[j]->value = value;
-	SCANFILES[j]->cur_block = OPENFILES[fileDesc]->root; 							//this is the current block
-	SCANFILES[j]->cur_record = 0;													//this is the current record of the current block
-  	return j;
+    AM_errno = AME_OK;
+    int j;
+    if(OPENFILES[fileDesc] == NULL){
+        AM_errno = AME_FILENOTOPEN;													//the file I want to scan is not open
+        return AM_errno;
+    }
+    if((op<1) || (op>6)){
+        AM_errno = AME_WRONGOP;														//the operation given is wrong
+        return AM_errno;
+    }
+    for(j = 0; j < MAX_OPEN_SCANS; j++){
+        if (SCANFILES[j] == NULL) break;											//find the first NULL index of the SCANFILES array
+    }
+    if(j == MAX_OPEN_SCANS ){
+        AM_errno = AME_MAXOPENSCANS;												//if the array of open scans is full print error
+        return AM_errno;
+    }
+    SCANFILES[j] = malloc(sizeof(AM_Scan));											//create a new struct for the scan
+    SCANFILES[j]->fileDesc = OPENFILES[fileDesc]->fileDesc;							//this is the number that BF_OpenFile returns
+    SCANFILES[j]->open_file_id = fileDesc;											//this is the number of this file in the array OPENFILES
+    SCANFILES[j]->op = op;
+    SCANFILES[j]->size_of_value = OPENFILES[fileDesc]->attrLength1;
+    SCANFILES[j]->type_of_value = OPENFILES[fileDesc]->attrType1;
+    SCANFILES[j]->size_of_value2 = OPENFILES[fileDesc]->attrLength2;
+    SCANFILES[j]->type_of_value2 = OPENFILES[fileDesc]->attrType2;
+    SCANFILES[j]->size_of_record = OPENFILES[fileDesc]->attrLength1 + OPENFILES[fileDesc]->attrLength2;
+    SCANFILES[j]->value =(void*)malloc(OPENFILES[fileDesc]->attrLength2);
+    SCANFILES[j]->value = value;
+    SCANFILES[j]->cur_block = OPENFILES[fileDesc]->root; 							//this is the current block
+    SCANFILES[j]->cur_record = 0;													//this is the current record of the current block
+    return j;
 }
 
 
 
 void *AM_FindNextEntry(int scanDesc) {
-	if(SCANFILES[scanDesc] == NULL){
-		AM_errno = AME_SCANNOTOPEN;													//if the scan is not open print error
-		return NULL;
-	}
+    if(SCANFILES[scanDesc] == NULL){
+        AM_errno = AME_SCANNOTOPEN;													//if the scan is not open print error
+        return NULL;
+    }
 	BF_Block* Scan_Block;
 	BF_Block_Init(&Scan_Block);
 	CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, SCANFILES[scanDesc]->cur_block, Scan_Block));
