@@ -367,358 +367,358 @@ void *AM_FindNextEntry(int scanDesc) {
         AM_errno = AME_SCANNOTOPEN;													//if the scan is not open print error
         return NULL;
     }
-	BF_Block* Scan_Block;
-	BF_Block_Init(&Scan_Block);
-	CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, SCANFILES[scanDesc]->cur_block, Scan_Block));
-	char* Data = BF_Block_GetData(Scan_Block);
-	void* value2 = (void*)malloc(SCANFILES[scanDesc]->size_of_value2);
-	int record = SCANFILES[scanDesc]->cur_record;
-	int offset = 2 + 2*sizeof(int) + record*(SCANFILES[scanDesc]->size_of_record);	//make the offset in order to find the next record
-	int check;																		//keep the result of the operation to do the check
-	int next_block;																	//keep the id of the next data block
-	switch(SCANFILES[scanDesc]->op){
-		case(EQUAL):
-			while(memcmp(Data,"b",1) == 0){											//while we are not in data block
-				int num_of_keys = *(Data+1);
-				int i = 0;
-				int cur_offset = 2 + 2*sizeof(int);
-				int cur_check;
-				while(i<num_of_keys){												//find the next interior block you have to scan
-					cur_check = memcmp(Data + cur_offset, SCANFILES[scanDesc]->value, SCANFILES[scanDesc]->size_of_value);
-					if(cur_check > 0){
-						break;
-					}
-					cur_offset += SCANFILES[scanDesc]->size_of_value + sizeof(int);
-					i++;
-				}
-				cur_offset -= sizeof(int);
-				next_block = *(Data + cur_offset);									//go to next interior block and repeat
-				SCANFILES[scanDesc]->cur_block = next_block;
-				CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-				CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-				Data = BF_Block_GetData(Scan_Block);
-			}
-			while(AM_errno == AME_OK){
-				if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){					//if our keys are strings, we use memcmp with strlen of our value
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){				//if our keys are integers, we use memcmp with sizeof(int)
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){				//if our keys are floats, we use float variables, cast our data to them and check them
-					float data_value, check_value;
-					data_value = *(float*)(Data + offset);
-					check_value = *(float*)(SCANFILES[scanDesc]->value);
-					if(data_value == check_value){
-						check = 0;
-					}else{
-						check = 1;
-					}
-				}
-				if(check == 0){																	//if our check is correct
-					offset += SCANFILES[scanDesc]->size_of_value;								//go to value2 to return it
-					memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
-					offset += SCANFILES[scanDesc]->size_of_value2;
-				}else{
-					offset += SCANFILES[scanDesc]->size_of_record;
-				}
-				SCANFILES[scanDesc]->cur_record++;												//increase the number of records
-				if(SCANFILES[scanDesc]->cur_record == *(Data+1)){								//if we reached the last record of this block, go to the next one
-					next_block = *(Data + 2 + sizeof(int));										//find pointer to next data block
-					if(next_block==-1){
-						AM_errno = AME_EOF;														//if there is no other data block, return and stop
-					}else{
-						offset = 2 + 2*sizeof(int);
-						SCANFILES[scanDesc]->cur_block = next_block;
-						SCANFILES[scanDesc]->cur_record = 0;
-						CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-						CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-						Data = BF_Block_GetData(Scan_Block);
-					}
-				}
-				if(check == 0){
-					return value2;																//now return the value2
-				}
-			}
-			CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-			if(AM_errno == AME_EOF){
-				return NULL;
-			}
-		case(NOT_EQUAL):
-			while(memcmp(Data,"b",1) == 0){											//go down from root until we reach the first data block
-				next_block = *(Data + 2 + sizeof(int));
-				SCANFILES[scanDesc]->cur_block = next_block;
-				CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-				CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-				Data = BF_Block_GetData(Scan_Block);
-			}
-			while(AM_errno == AME_OK){
-				if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
-					float data_value, check_value;
-					data_value = *(float*)(Data + offset);
-					check_value = *(float*)(SCANFILES[scanDesc]->value);
-					if(data_value != check_value){
-						check = 1;
-					}else{
-						check = 0;
-					}
-				}
-				if(check != 0){
-					offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
-					memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
-					offset += SCANFILES[scanDesc]->size_of_value2;
-				}else{
-					offset += SCANFILES[scanDesc]->size_of_record;
-				}
-				SCANFILES[scanDesc]->cur_record++;
-				if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
-					next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
-					if(next_block==-1){
-						AM_errno = AME_EOF;
-					}else{
-						offset = 2 + 2*sizeof(int);
-						SCANFILES[scanDesc]->cur_block = next_block;
-						SCANFILES[scanDesc]->cur_record = 0;
-						CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-						CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-						Data = BF_Block_GetData(Scan_Block);
-					}
-				}
-				if(check != 0){
-					return value2;
-				}
-			}
-			CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-			return NULL;
-		case(LESS_THAN):
-			while(memcmp(Data,"b",1) == 0){											//until we reach data
-				next_block = *(Data + 2 + sizeof(int));
-				SCANFILES[scanDesc]->cur_block = next_block;
-				CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-				CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-				Data = BF_Block_GetData(Scan_Block);
-			}
-			while(AM_errno == AME_OK){
-				if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
-					float data_value, check_value;
-					data_value = *(float*)(Data + offset);
-					check_value = *(float*)(SCANFILES[scanDesc]->value);
-					if(data_value < check_value){
-						check = -1;
-					}else{
-						check = 1;
-					}
-				}
-				if(check < 0){
-					offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
-					memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
-					offset += SCANFILES[scanDesc]->size_of_value2;
-				}else{
-					offset += SCANFILES[scanDesc]->size_of_record;
-				}
-				SCANFILES[scanDesc]->cur_record++;
-				if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
-					next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
-					if(next_block==-1){
-						AM_errno = AME_EOF;
-					}else{
-						offset = 2 + 2*sizeof(int);
-						SCANFILES[scanDesc]->cur_block = next_block;
-						SCANFILES[scanDesc]->cur_record = 0;
-						CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-						CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-						Data = BF_Block_GetData(Scan_Block);
-					}
-				}
-				if(check < 0){
-					return value2;
-				}
-			}
-			CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-			return NULL;
-		case(GREATER_THAN):
-			while(memcmp(Data,"b",1) == 0){
-				int num_of_keys = *(Data+1);
-				int i = 0;
-				int cur_offset = 2 + 2*sizeof(int);
-				int cur_check;
-				while(i<num_of_keys){
-					cur_check = memcmp(Data + cur_offset, SCANFILES[scanDesc]->value, SCANFILES[scanDesc]->size_of_value);
-					if(cur_check > 0){
-						break;
-					}
-					cur_offset += SCANFILES[scanDesc]->size_of_value + sizeof(int);
-					i++;
-				}
-				cur_offset -= sizeof(int);
-				next_block = *(Data + cur_offset);
-				SCANFILES[scanDesc]->cur_block = next_block;
-				CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-				CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-				Data = BF_Block_GetData(Scan_Block);
-			}
-			while(AM_errno == AME_OK){
-				if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
-					float data_value, check_value;
-					data_value = *(float*)(Data + offset);
-					check_value = *(float*)(SCANFILES[scanDesc]->value);
-					if(data_value > check_value){
-						check = 1;
-					}else{
-						check = -1;
-					}
-				}
-				if(check > 0){
-					offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
-					memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
-					offset += SCANFILES[scanDesc]->size_of_value2;
-				}else{
-					offset += SCANFILES[scanDesc]->size_of_record;
-				}
-				SCANFILES[scanDesc]->cur_record++;
-				if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
-					next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
-					if(next_block==-1){
-						AM_errno = AME_EOF;
-					}else{
-						offset = 2 + 2*sizeof(int);
-						SCANFILES[scanDesc]->cur_block = next_block;
-						SCANFILES[scanDesc]->cur_record = 0;
-						CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-						CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-						Data = BF_Block_GetData(Scan_Block);
-					}
-				}
-				if(check > 0){
-					return value2;
-				}
-			}
-			CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-			return NULL;
-		case(LESS_THAN_OR_EQUAL):
-			while(memcmp(Data,"b",1) == 0){											//until we reach data
-				next_block = *(Data + 2 + sizeof(int));
-				SCANFILES[scanDesc]->cur_block = next_block;
-				CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-				CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-				Data = BF_Block_GetData(Scan_Block);
-			}
-			while(AM_errno == AME_OK){
-				if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
-					float data_value, check_value;
-					data_value = *(float*)(Data + offset);
-					check_value = *(float*)(SCANFILES[scanDesc]->value);
-					if(data_value <= check_value){
-						check = 0;
-					}else{
-						check = 1;
-					}
-				}
-				if(check <= 0){
-					offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
-					memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
-					offset += SCANFILES[scanDesc]->size_of_value2;
-				}else{
-					offset += SCANFILES[scanDesc]->size_of_record;
-				}
-				SCANFILES[scanDesc]->cur_record++;
-				if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
-					next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
-					if(next_block==-1){
-						AM_errno = AME_EOF;
-					}else{
-						offset = 2 + 2*sizeof(int);
-						SCANFILES[scanDesc]->cur_block = next_block;
-						SCANFILES[scanDesc]->cur_record = 0;
-						CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-						CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-						Data = BF_Block_GetData(Scan_Block);
-					}
-				}
-				if(check <= 0){
-					return value2;
-				}
-			}
-			CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-			return NULL;
-		case(GREATER_THAN_OR_EQUAL):
-			while(memcmp(Data,"b",1) == 0){
-				int num_of_keys = *(Data+1);
-				int i = 0;
-				int cur_offset = 2 + 2*sizeof(int);
-				int cur_check;
-				while(i<num_of_keys){
-					cur_check = memcmp(Data + cur_offset, SCANFILES[scanDesc]->value, SCANFILES[scanDesc]->size_of_value);
-					if(cur_check > 0){
-						break;
-					}
-					cur_offset += SCANFILES[scanDesc]->size_of_value + sizeof(int);
-					i++;
-				}
-				cur_offset -= sizeof(int);
-				next_block = *(Data + cur_offset);
-				SCANFILES[scanDesc]->cur_block = next_block;
-				CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-				CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-				Data = BF_Block_GetData(Scan_Block);
-			}
-			while(AM_errno == AME_OK){
-				if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
-					check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
-				}else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
-					float data_value, check_value;
-					data_value = *(float*)(Data + offset);
-					check_value = *(float*)(SCANFILES[scanDesc]->value);
-					if(data_value >= check_value){
-						check = 1;
-					}else{
-						check = -1;
-					}
-				}
-				if(check >= 0){
-					offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
-					memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
-					offset += SCANFILES[scanDesc]->size_of_value2;
-				}else{
-					offset += SCANFILES[scanDesc]->size_of_record;
-				}
-				SCANFILES[scanDesc]->cur_record++;
-				if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
-					next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
-					if(next_block==-1){
-						AM_errno = AME_EOF;
-					}else{
-						offset = 2 + 2*sizeof(int);
-						SCANFILES[scanDesc]->cur_block = next_block;
-						SCANFILES[scanDesc]->cur_record = 0;
-						CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-						CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
-						Data = BF_Block_GetData(Scan_Block);
-					}
-				}
-				if(check >= 0){
-					return value2;
-				}
-			}
-			CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
-			return NULL;
-	}
+    BF_Block* Scan_Block;
+    BF_Block_Init(&Scan_Block);
+    CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, SCANFILES[scanDesc]->cur_block, Scan_Block));
+    char* Data = BF_Block_GetData(Scan_Block);
+    void* value2 = (void*)malloc(SCANFILES[scanDesc]->size_of_value2);
+    int record = SCANFILES[scanDesc]->cur_record;
+    int offset = 2 + 2*sizeof(int) + record*(SCANFILES[scanDesc]->size_of_record);	//make the offset in order to find the next record
+    int check;																		//keep the result of the operation to do the check
+    int next_block;																	//keep the id of the next data block
+    switch(SCANFILES[scanDesc]->op){
+        case(EQUAL):
+            while(memcmp(Data,"b",1) == 0){											//while we are not in data block
+                int num_of_keys = *(Data+1);
+                int i = 0;
+                int cur_offset = 2 + 2*sizeof(int);
+                int cur_check;
+                while(i<num_of_keys){												//find the next interior block you have to scan
+                    cur_check = memcmp(Data + cur_offset, SCANFILES[scanDesc]->value, SCANFILES[scanDesc]->size_of_value);
+                    if(cur_check > 0){
+                        break;
+                    }
+                    cur_offset += SCANFILES[scanDesc]->size_of_value + sizeof(int);
+                    i++;
+                }
+                cur_offset -= sizeof(int);
+                next_block = *(Data + cur_offset);									//go to next interior block and repeat
+                SCANFILES[scanDesc]->cur_block = next_block;
+                CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                Data = BF_Block_GetData(Scan_Block);
+            }
+            while(AM_errno == AME_OK){
+                if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){					//if our keys are strings, we use memcmp with strlen of our value
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){				//if our keys are integers, we use memcmp with sizeof(int)
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){				//if our keys are floats, we use float variables, cast our data to them and check them
+                    float data_value, check_value;
+                    data_value = *(float*)(Data + offset);
+                    check_value = *(float*)(SCANFILES[scanDesc]->value);
+                    if(data_value == check_value){
+                        check = 0;
+                    }else{
+                        check = 1;
+                    }
+                }
+                if(check == 0){																	//if our check is correct
+                    offset += SCANFILES[scanDesc]->size_of_value;								//go to value2 to return it
+                    memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
+                    offset += SCANFILES[scanDesc]->size_of_value2;
+                }else{
+                    offset += SCANFILES[scanDesc]->size_of_record;
+                }
+                SCANFILES[scanDesc]->cur_record++;												//increase the number of records
+                if(SCANFILES[scanDesc]->cur_record == *(Data+1)){								//if we reached the last record of this block, go to the next one
+                    next_block = *(Data + 2 + sizeof(int));										//find pointer to next data block
+                    if(next_block==-1){
+                        AM_errno = AME_EOF;														//if there is no other data block, return and stop
+                    }else{
+                        offset = 2 + 2*sizeof(int);
+                        SCANFILES[scanDesc]->cur_block = next_block;
+                        SCANFILES[scanDesc]->cur_record = 0;
+                        CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                        CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                        Data = BF_Block_GetData(Scan_Block);
+                    }
+                }
+                if(check == 0){
+                    return value2;																//now return the value2
+                }
+            }
+            CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+            if(AM_errno == AME_EOF){
+                return NULL;
+            }
+        case(NOT_EQUAL):
+            while(memcmp(Data,"b",1) == 0){											//go down from root until we reach the first data block
+                next_block = *(Data + 2 + sizeof(int));
+                SCANFILES[scanDesc]->cur_block = next_block;
+                CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                Data = BF_Block_GetData(Scan_Block);
+            }
+            while(AM_errno == AME_OK){
+                if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
+                    float data_value, check_value;
+                    data_value = *(float*)(Data + offset);
+                    check_value = *(float*)(SCANFILES[scanDesc]->value);
+                    if(data_value != check_value){
+                        check = 1;
+                    }else{
+                        check = 0;
+                    }
+                }
+                if(check != 0){
+                    offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
+                    memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
+                    offset += SCANFILES[scanDesc]->size_of_value2;
+                }else{
+                    offset += SCANFILES[scanDesc]->size_of_record;
+                }
+                SCANFILES[scanDesc]->cur_record++;
+                if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
+                    next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
+                    if(next_block==-1){
+                        AM_errno = AME_EOF;
+                    }else{
+                        offset = 2 + 2*sizeof(int);
+                        SCANFILES[scanDesc]->cur_block = next_block;
+                        SCANFILES[scanDesc]->cur_record = 0;
+                        CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                        CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                        Data = BF_Block_GetData(Scan_Block);
+                    }
+                }
+                if(check != 0){
+                    return value2;
+                }
+            }
+            CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+            return NULL;
+        case(LESS_THAN):
+            while(memcmp(Data,"b",1) == 0){											//until we reach data
+                next_block = *(Data + 2 + sizeof(int));
+                SCANFILES[scanDesc]->cur_block = next_block;
+                CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                Data = BF_Block_GetData(Scan_Block);
+            }
+            while(AM_errno == AME_OK){
+                if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
+                    float data_value, check_value;
+                    data_value = *(float*)(Data + offset);
+                    check_value = *(float*)(SCANFILES[scanDesc]->value);
+                    if(data_value < check_value){
+                        check = -1;
+                    }else{
+                        check = 1;
+                    }
+                }
+                if(check < 0){
+                    offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
+                    memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
+                    offset += SCANFILES[scanDesc]->size_of_value2;
+                }else{
+                    offset += SCANFILES[scanDesc]->size_of_record;
+                }
+                SCANFILES[scanDesc]->cur_record++;
+                if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
+                    next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
+                    if(next_block==-1){
+                        AM_errno = AME_EOF;
+                    }else{
+                        offset = 2 + 2*sizeof(int);
+                        SCANFILES[scanDesc]->cur_block = next_block;
+                        SCANFILES[scanDesc]->cur_record = 0;
+                        CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                        CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                        Data = BF_Block_GetData(Scan_Block);
+                    }
+                }
+                if(check < 0){
+                    return value2;
+                }
+            }
+            CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+            return NULL;
+        case(GREATER_THAN):
+            while(memcmp(Data,"b",1) == 0){
+                int num_of_keys = *(Data+1);
+                int i = 0;
+                int cur_offset = 2 + 2*sizeof(int);
+                int cur_check;
+                while(i<num_of_keys){
+                    cur_check = memcmp(Data + cur_offset, SCANFILES[scanDesc]->value, SCANFILES[scanDesc]->size_of_value);
+                    if(cur_check > 0){
+                        break;
+                    }
+                    cur_offset += SCANFILES[scanDesc]->size_of_value + sizeof(int);
+                    i++;
+                }
+                cur_offset -= sizeof(int);
+                next_block = *(Data + cur_offset);
+                SCANFILES[scanDesc]->cur_block = next_block;
+                CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                Data = BF_Block_GetData(Scan_Block);
+            }
+            while(AM_errno == AME_OK){
+                if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
+                    float data_value, check_value;
+                    data_value = *(float*)(Data + offset);
+                    check_value = *(float*)(SCANFILES[scanDesc]->value);
+                    if(data_value > check_value){
+                        check = 1;
+                    }else{
+                        check = -1;
+                    }
+                }
+                if(check > 0){
+                    offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
+                    memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
+                    offset += SCANFILES[scanDesc]->size_of_value2;
+                }else{
+                    offset += SCANFILES[scanDesc]->size_of_record;
+                }
+                SCANFILES[scanDesc]->cur_record++;
+                if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
+                    next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
+                    if(next_block==-1){
+                        AM_errno = AME_EOF;
+                    }else{
+                        offset = 2 + 2*sizeof(int);
+                        SCANFILES[scanDesc]->cur_block = next_block;
+                        SCANFILES[scanDesc]->cur_record = 0;
+                        CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                        CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                        Data = BF_Block_GetData(Scan_Block);
+                    }
+                }
+                if(check > 0){
+                    return value2;
+                }
+            }
+            CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+            return NULL;
+        case(LESS_THAN_OR_EQUAL):
+            while(memcmp(Data,"b",1) == 0){											//until we reach data
+                next_block = *(Data + 2 + sizeof(int));
+                SCANFILES[scanDesc]->cur_block = next_block;
+                CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                Data = BF_Block_GetData(Scan_Block);
+            }
+            while(AM_errno == AME_OK){
+                if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
+                    float data_value, check_value;
+                    data_value = *(float*)(Data + offset);
+                    check_value = *(float*)(SCANFILES[scanDesc]->value);
+                    if(data_value <= check_value){
+                        check = 0;
+                    }else{
+                        check = 1;
+                    }
+                }
+                if(check <= 0){
+                    offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
+                    memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
+                    offset += SCANFILES[scanDesc]->size_of_value2;
+                }else{
+                    offset += SCANFILES[scanDesc]->size_of_record;
+                }
+                SCANFILES[scanDesc]->cur_record++;
+                if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
+                    next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
+                    if(next_block==-1){
+                        AM_errno = AME_EOF;
+                    }else{
+                        offset = 2 + 2*sizeof(int);
+                        SCANFILES[scanDesc]->cur_block = next_block;
+                        SCANFILES[scanDesc]->cur_record = 0;
+                        CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                        CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                        Data = BF_Block_GetData(Scan_Block);
+                    }
+                }
+                if(check <= 0){
+                    return value2;
+                }
+            }
+            CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+            return NULL;
+        case(GREATER_THAN_OR_EQUAL):
+            while(memcmp(Data,"b",1) == 0){
+                int num_of_keys = *(Data+1);
+                int i = 0;
+                int cur_offset = 2 + 2*sizeof(int);
+                int cur_check;
+                while(i<num_of_keys){
+                    cur_check = memcmp(Data + cur_offset, SCANFILES[scanDesc]->value, SCANFILES[scanDesc]->size_of_value);
+                    if(cur_check > 0){
+                        break;
+                    }
+                    cur_offset += SCANFILES[scanDesc]->size_of_value + sizeof(int);
+                    i++;
+                }
+                cur_offset -= sizeof(int);
+                next_block = *(Data + cur_offset);
+                SCANFILES[scanDesc]->cur_block = next_block;
+                CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                Data = BF_Block_GetData(Scan_Block);
+            }
+            while(AM_errno == AME_OK){
+                if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"c",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, strlen((char*)(SCANFILES[scanDesc]->value)));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"i",1) == 0){
+                    check = memcmp(Data+offset, SCANFILES[scanDesc]->value, sizeof(int));
+                }else if(memcmp(&(SCANFILES[scanDesc]->type_of_value),"f",1) == 0){
+                    float data_value, check_value;
+                    data_value = *(float*)(Data + offset);
+                    check_value = *(float*)(SCANFILES[scanDesc]->value);
+                    if(data_value >= check_value){
+                        check = 1;
+                    }else{
+                        check = -1;
+                    }
+                }
+                if(check >= 0){
+                    offset += SCANFILES[scanDesc]->size_of_value;		//go to value2 to print it
+                    memcpy(value2, Data + offset, SCANFILES[scanDesc]->size_of_value2);
+                    offset += SCANFILES[scanDesc]->size_of_value2;
+                }else{
+                    offset += SCANFILES[scanDesc]->size_of_record;
+                }
+                SCANFILES[scanDesc]->cur_record++;
+                if(SCANFILES[scanDesc]->cur_record == *(Data+1)){			//go to next data block
+                    next_block = *(Data + 2 + sizeof(int));					//find pointer to next data block
+                    if(next_block==-1){
+                        AM_errno = AME_EOF;
+                    }else{
+                        offset = 2 + 2*sizeof(int);
+                        SCANFILES[scanDesc]->cur_block = next_block;
+                        SCANFILES[scanDesc]->cur_record = 0;
+                        CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+                        CALL_OR_DIE(BF_GetBlock(SCANFILES[scanDesc]->fileDesc, next_block, Scan_Block));
+                        Data = BF_Block_GetData(Scan_Block);
+                    }
+                }
+                if(check >= 0){
+                    return value2;
+                }
+            }
+            CALL_OR_DIE(BF_UnpinBlock(Scan_Block));
+            return NULL;
+    }
 }
 
 
