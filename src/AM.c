@@ -194,7 +194,7 @@ int AM_CloseIndex (int fileDesc) {
 
 
 int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
-                                                                                  //searching if the file is open and doesn't have open scans on it
+    /* searching if the file is open and doesn't have open scans on it */
     for(int j = 0; j < MAX_OPEN_SCANS; j++){                                      //if it is not open,or it is open and has open scans on it
         if(SCANFILES[j] != NULL){
             if(SCANFILES[j]->open_file_id = fileDesc){
@@ -209,21 +209,24 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
         return AM_errno;
     }
 
-	BF_Block *block1;
-	BF_Block_Init(&block1);
-	int blocks_num;
-	char* BlockData;
-	int i = fileDesc;                                                             //keeping things simple, it is what openfile returned
-	int size_of_record = OPENFILES[i]->attrLength1 + OPENFILES[i]->attrLength2;
-	int size_of_key = OPENFILES[i]->attrLength1;
+    /* variable decl */
+    BF_Block *block1;
+    BF_Block_Init(&block1);
+    int blocks_num;
+    char* BlockData;
+    int i = fileDesc;                                                             //keeping things simple, it is what openfile returned
+    int size_of_record = OPENFILES[i]->attrLength1 + OPENFILES[i]->attrLength2;
+    int size_of_key = OPENFILES[i]->attrLength1;
     CALL_OR_DIE(BF_GetBlock(OPENFILES[i]->fileDesc, OPENFILES[i]->root, block1)); //getting the root block
-	if(memcmp(BF_Block_GetData(block1),"d",1) == 0){                              //if the root is a data block, means that it is the only one.
-		BlockData = BF_Block_GetData(block1);
-		size_t used_space = 2 + *(BlockData + 1)*size_of_record + 2*sizeof(int);  //in space that is used in a data block
-		size_t available_space = BF_BLOCK_SIZE - used_space;
-		if(available_space > size_of_record){                                     //if there is space for another record
-			size_t offset = 2 + 2*sizeof(int);
-			int processed_records = 0;                                            //this is a counter to know how many records I will have to move
+
+    if(memcmp(BF_Block_GetData(block1),"d",1) == 0){                              //if the root is a data block, means that it is the only one.
+        /* root block = data block*/
+        BlockData = BF_Block_GetData(block1);
+        size_t used_space = 2 + *(BlockData + 1)*size_of_record + 2*sizeof(int);  //in space that is used in a data block
+        size_t available_space = BF_BLOCK_SIZE - used_space;
+        if(available_space > size_of_record){                                     //if there is space for another record
+            size_t offset = 2 + 2*sizeof(int);
+            int processed_records = 0;                                            //this is a counter to know how many records I will have to move
             if(memcmp(&(OPENFILES[i]->attrType1),"f",1) == 0){                    //in case of float, memcmp doesn't work, so I have to cast them
                 float f1,f2;
                 //casting the variables
@@ -237,45 +240,46 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
                 }
             }else{                                                                //for other types memcmp works fine
                 while((memcmp(BlockData + offset, value1, OPENFILES[i]->attrLength1) < 0) && (*(BlockData + 1) > processed_records)){ //value1 > blockdata + offset
-    				offset += size_of_record;
-    				processed_records++;
-    			}
+                    offset += size_of_record;
+                    processed_records++;
+                }
             }
-			memmove(BlockData + offset + size_of_record, BlockData + offset, (*(BlockData + 1) - processed_records)*size_of_record);
-			                                                                       //with memmove i move (size_of_record)*bytes to right all the records
-                                                                                   //that are greater than the insertion
-			memcpy(BlockData + offset, value1, OPENFILES[i]->attrLength1);        //now i copy the first value-key in place
-			offset += OPENFILES[i]->attrLength1;
-			memcpy(BlockData + offset, value2, OPENFILES[i]->attrLength2);        //2nd value in place
-			memset(BlockData + 1,++*(BlockData + 1),1);                           //increase the byte storing the number of records
+            memmove(BlockData + offset + size_of_record, BlockData + offset, (*(BlockData + 1) - processed_records)*size_of_record);
+            /* with memmove i move (size_of_record)*bytes to right all the records that are greater than the insertion */
+
+            memcpy(BlockData + offset, value1, OPENFILES[i]->attrLength1);        //now i copy the first value-key in place
+            offset += OPENFILES[i]->attrLength1;
+            memcpy(BlockData + offset, value2, OPENFILES[i]->attrLength2);        //2nd value in place
+            memset(BlockData + 1,++*(BlockData + 1),1);                           //increase the byte storing the number of records
             BF_Block_SetDirty(block1);
             BF_UnpinBlock(block1);
-		}else{
-                                                                                  //this is the case where there isn't more space in block to store another record
+        }else{
+            /* this is the case where there isn't more space in block to store another record */
             BF_Block *blockRight;
-			BF_Block_Init(&blockRight);
-			CALL_OR_DIE(BF_AllocateBlock(OPENFILES[i]->fileDesc, blockRight));
+            BF_Block_Init(&blockRight);
+            CALL_OR_DIE(BF_AllocateBlock(OPENFILES[i]->fileDesc, blockRight));
             OPENFILES[i]->blockid++;                                              //increasing the variable storing the last block allocated
             int lbid = *(BlockData + 2);
             BF_Block_SetDirty(block1);
             BF_Block_SetDirty(blockRight);
-    		CALL_OR_DIE(BF_UnpinBlock(blockRight));
+            CALL_OR_DIE(BF_UnpinBlock(blockRight));
             CALL_OR_DIE(BF_UnpinBlock(block1));
-			BF_Block_Destroy(&blockRight);
-			split_leaf(i, lbid, OPENFILES[i]->blockid);
-			Insert_Key(i, lbid, OPENFILES[i]->blockid);                           //connect the two new blocks with the upper block
-			AM_InsertEntry(fileDesc, value1, value2);
-		}
-	}else if(memcmp(BF_Block_GetData(block1),"b",1) == 0){                        //if the root is an index block
+            BF_Block_Destroy(&blockRight);
+            split_leaf(i, lbid, OPENFILES[i]->blockid);
+            Insert_Key(i, lbid, OPENFILES[i]->blockid);                           //connect the two new blocks with the upper block
+            AM_InsertEntry(fileDesc, value1, value2);
+        }
+    }else if(memcmp(BF_Block_GetData(block1),"b",1) == 0){                        //if the root is an index block
+        /* root block = index block*/
         CALL_OR_DIE(BF_UnpinBlock(block1));
-		int blocknum = AM_Traverse(i, OPENFILES[i]->root, value1);                //traversing from root to the data block where the new entry should be put, and stores the pointer in block1
+        int blocknum = AM_Traverse(i, OPENFILES[i]->root, value1);                //traversing from root to the data block where the new entry should be put, and stores the pointer in block1
         CALL_OR_DIE(BF_GetBlock(OPENFILES[i]->fileDesc,blocknum,block1));
         BlockData = BF_Block_GetData(block1);
-		size_t used_space = 2 + sizeof(int) + *(BlockData + 1)*size_of_record + sizeof(int);//counting the used space in the block that we traversed
-		size_t available_space = BF_BLOCK_SIZE - used_space;
-		if (available_space > size_of_record){                                    //there is space for a new entry
-			size_t offset = 2 + 2*sizeof(int);
-			int processed_records = 0;                                            //this is a counter to know how many records i will have to move
+        size_t used_space = 2 + sizeof(int) + *(BlockData + 1)*size_of_record + sizeof(int);//counting the used space in the block that we traversed
+        size_t available_space = BF_BLOCK_SIZE - used_space;
+        if (available_space > size_of_record){                                    //there is space for a new entry
+            size_t offset = 2 + 2*sizeof(int);
+            int processed_records = 0;                                            //this is a counter to know how many records i will have to move
             if(memcmp(&(OPENFILES[i]->attrType1),"f",1) == 0){                    //in case of float, memcmp doesnt work, so I have to cast
                 float f1,f2;
                 f1 = *(float*)(value1);
@@ -288,37 +292,37 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
                 }
             }else{
                 while((memcmp(BlockData + offset, value1, OPENFILES[i]->attrLength1) < 0) && (processed_records < *(BlockData + 1))){ //value1 > blockdata + offset
-    				offset += size_of_record;
-    				processed_records++;
-    			}
+                    offset += size_of_record;
+                    processed_records++;
+                }
             }
-			memmove(BlockData + offset + size_of_record, BlockData + offset, (*(BlockData + 1) - processed_records)*size_of_record);
-			//with memmove i move (size_of_record)*bytes to right all the records that are greater than the insertion
-			memcpy(BlockData + offset, value1, OPENFILES[i]->attrLength1);        //now i insert the first value in place
-			offset += OPENFILES[i]->attrLength1;
-			memcpy(BlockData + offset, value2, OPENFILES[i]->attrLength2);        //2nd value in place
-			memset(BlockData + 1,++*(BlockData + 1),1);                           //increase the byte with ne number of records
+            memmove(BlockData + offset + size_of_record, BlockData + offset, (*(BlockData + 1) - processed_records)*size_of_record);
+            /* with memmove i move (size_of_record)*bytes to right all the records that are greater than the insertion */
+            memcpy(BlockData + offset, value1, OPENFILES[i]->attrLength1);        //now i insert the first value in place
+            offset += OPENFILES[i]->attrLength1;
+            memcpy(BlockData + offset, value2, OPENFILES[i]->attrLength2);        //2nd value in place
+            memset(BlockData + 1,++*(BlockData + 1),1);                           //increase the byte with ne number of records
             BF_Block_SetDirty(block1);
             CALL_OR_DIE(BF_UnpinBlock(block1));
-		}else{
-			BF_Block *blockRight;
-			BF_Block_Init(&blockRight);
-			CALL_OR_DIE(BF_AllocateBlock(OPENFILES[i]->fileDesc, blockRight));
+        }else{
+            BF_Block *blockRight;
+            BF_Block_Init(&blockRight);
+            CALL_OR_DIE(BF_AllocateBlock(OPENFILES[i]->fileDesc, blockRight));
             OPENFILES[i]->blockid++;                                              //increasing the variable storing the last block allocated
             int lbid = *(BlockData + 2);
             BF_Block_SetDirty(block1);
             BF_Block_SetDirty(blockRight);
-    		CALL_OR_DIE(BF_UnpinBlock(blockRight));
+            CALL_OR_DIE(BF_UnpinBlock(blockRight));
             CALL_OR_DIE(BF_UnpinBlock(block1));
-			BF_Block_Destroy(&blockRight);
-			split_leaf(i, lbid, OPENFILES[i]->blockid);                           //split the leaf in the two blocks
-			Insert_Key(i, lbid, OPENFILES[i]->blockid);                           //then connect the two new blocks with the upper block
-			AM_InsertEntry(fileDesc, value1, value2);                             //Now insert the new value
-		}
-	}
+            BF_Block_Destroy(&blockRight);
+            split_leaf(i, lbid, OPENFILES[i]->blockid);                           //split the leaf in the two blocks
+            Insert_Key(i, lbid, OPENFILES[i]->blockid);                           //then connect the two new blocks with the upper block
+            AM_InsertEntry(fileDesc, value1, value2);                             //Now insert the new value
+        }
+    }
     AM_errno = AME_OK;
     BF_Block_Destroy(&block1);
-  	return AM_errno;
+    return AM_errno;
 }
 
 

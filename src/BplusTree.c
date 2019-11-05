@@ -30,14 +30,14 @@ void Insert_Key(int i, int blockL_id, int blockR_id){BF_Block* blockL;
                 size_t offset = 2 + 2*sizeof(int);
                 int processed_keys = 0;                                       //this is a counter to know how many keys i will have to move
                 if (memcmp(&(OPENFILES[i]->attrType1),"f",1) == 0){            //in case of float memcmp doesnt work, so I have to cast them
-                  float f1,f2;
-                  f1 = *(float*)(blockRData + 2 + 2*sizeof(int));
-                  f2 = *(float*)(UpperBlockData + offset);
-                  while((f1 >= f2) && (processed_keys < *(UpperBlockData + 1))){ //until I find the key with biger value than value1
-                      offset += size_of_key + sizeof(int);
-                      f2 = *(float*)(UpperBlockData + offset);
-                      processed_keys++;
-                }
+                    float f1,f2;
+                    f1 = *(float*)(blockRData + 2 + 2*sizeof(int));
+                    f2 = *(float*)(UpperBlockData + offset);
+                    while((f1 >= f2) && (processed_keys < *(UpperBlockData + 1))){ //until I find the key with biger value than value1
+                        offset += size_of_key + sizeof(int);
+                        f2 = *(float*)(UpperBlockData + offset);
+                        processed_keys++;
+                    }
                 }else{
                     while ((memcmp(UpperBlockData + offset, blockRData + 2 + 2*sizeof(int) , OPENFILES[i]->attrLength1) < 0) && (processed_keys < *(UpperBlockData + 1))){ //value1 > blockdata + offset
                         offset += size_of_key + sizeof(int);
@@ -57,21 +57,21 @@ void Insert_Key(int i, int blockL_id, int blockR_id){BF_Block* blockL;
             }else{                                                              //if we are connecting index blocks
                 size_t offset = 2 + 2*sizeof(int);
                 int processed_keys = 0;                                         //this is a counter to know how many keys i will have to move
-                  if(memcmp(&(OPENFILES[i]->attrType1),"f",1) == 0){
-                      float f1,f2;
-                      f1 = *(float*)(blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key);
+                if(memcmp(&(OPENFILES[i]->attrType1),"f",1) == 0){
+                    float f1,f2;
+                    f1 = *(float*)(blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key);
+                    f2 = *(float*)(UpperBlockData + offset);
+                    while((f1 >= f2) && (processed_keys < *(UpperBlockData + 1))){ //until i find the key with biger value than value1
+                      offset += size_of_key + sizeof(int);
                       f2 = *(float*)(UpperBlockData + offset);
-                      while((f1 >= f2) && (processed_keys < *(UpperBlockData + 1))){ //until i find the key with biger value than value1
-                          offset += size_of_key + sizeof(int);
-                          f2 = *(float*)(UpperBlockData + offset);
-                          processed_keys++;
+                      processed_keys++;
                     }
-                  }else{
-                      while((memcmp(UpperBlockData + offset, blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key , OPENFILES[i]->attrLength1) < 0) && (processed_keys < *(UpperBlockData + 1))){ //value1 > blockdata + offset
-                          offset += size_of_key + sizeof(int);
-                          processed_keys++;
-                      }
-                  }
+                }else{
+                    while((memcmp(UpperBlockData + offset, blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key , OPENFILES[i]->attrLength1) < 0) && (processed_keys < *(UpperBlockData + 1))){ //value1 > blockdata + offset
+                      offset += size_of_key + sizeof(int);
+                      processed_keys++;
+                    }
+                }
                 memmove(UpperBlockData + offset + size_of_key + sizeof(int), UpperBlockData + offset, (*(blockLData + 1) - processed_keys)*size_of_key + (*(blockLData + 1) - processed_keys)*sizeof(int));
                 memcpy(UpperBlockData + offset, blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key , OPENFILES[i]->attrLength1); //the last value of left block is middle one of the old one
                 memcpy(UpperBlockData + offset + size_of_key, &OPENFILES[i]->blockid, sizeof(int));
@@ -114,16 +114,16 @@ void Insert_Key(int i, int blockL_id, int blockR_id){BF_Block* blockL;
         memset(RootBlockData + 1,1,1);
         memcpy(RootBlockData + 2, &OPENFILES[i]->blockid, sizeof(int));
         if(memcmp(blockRData,"d",1) == 0){
-          size_t offset = 2 + 2*sizeof(int);
-          memcpy(RootBlockData + offset, blockRData + 2 + 2*sizeof(int) , OPENFILES[i]->attrLength1); //taking the first value of the below block
-          memcpy(RootBlockData + offset + size_of_key, blockRData + 2, sizeof(int)); //fix the pointers
-          memcpy(RootBlockData + offset - sizeof(int), blockLData + 2, sizeof(int)); //fix the pointers
+            size_t offset = 2 + 2*sizeof(int);
+            memcpy(RootBlockData + offset, blockRData + 2 + 2*sizeof(int) , OPENFILES[i]->attrLength1); //taking the first value of the below block
+            memcpy(RootBlockData + offset + size_of_key, blockRData + 2, sizeof(int)); //fix the pointers
+            memcpy(RootBlockData + offset - sizeof(int), blockLData + 2, sizeof(int)); //fix the pointers
         }else{
-          size_t offset = 2 + 2*sizeof(int);
-          memcpy(RootBlockData + offset, blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key , OPENFILES[i]->attrLength1); //taking the first value of the below block
-          memcpy(RootBlockData + offset + size_of_key, blockRData + 2, sizeof(int));
-          memcpy(RootBlockData + offset - sizeof(int), blockLData + 2, sizeof(int));
-          memset(blockLData + 1, --*(blockLData + 1), 1);                   //reduce the number of keys in the left block without deleting it
+            size_t offset = 2 + 2*sizeof(int);
+            memcpy(RootBlockData + offset, blockLData + 2 + sizeof(int) + *(blockLData + 1)*sizeof(int) + (*(blockLData + 1)-1)*size_of_key , OPENFILES[i]->attrLength1); //taking the first value of the below block
+            memcpy(RootBlockData + offset + size_of_key, blockRData + 2, sizeof(int));
+            memcpy(RootBlockData + offset - sizeof(int), blockLData + 2, sizeof(int));
+            memset(blockLData + 1, --*(blockLData + 1), 1);                   //reduce the number of keys in the left block without deleting it
         }
         OPENFILES[i]->root = OPENFILES[i]->blockid;
         BF_Block_SetDirty(RootBlock);
